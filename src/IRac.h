@@ -467,6 +467,7 @@ void electra(IRElectraAc *ac,
              const bool on, const bool prev_power, const stdAc::opmode_t mode,
              const float degrees, const stdAc::fanspeed_t fan,
              const stdAc::swingv_t swingv, const stdAc::swingv_t swingv_prev,
+             const stdAc::swingh_t swingh, const stdAc::swingh_t swingh_prev,
              const bool turbo, const bool light,
              const bool filter, const bool clean);
 #endif  // SEND_SHARP_AC

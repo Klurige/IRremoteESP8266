@@ -45,6 +45,7 @@ using irutils::addIntToString;
 using irutils::addLabeledString;
 using irutils::addModeToString;
 using irutils::addModelToString;
+using irutils::addSwingHToString;
 using irutils::addSwingVToString;
 using irutils::addTempToString;
 using irutils::addToggleToString;
@@ -452,7 +453,11 @@ void IRSharpAc::setTemp(const uint8_t temp, const bool save) {
 /// Get the current temperature setting.
 /// @return The current setting for temp. in degrees celsius.
 uint8_t IRSharpAc::getTemp(void) const {
-  return _.Temp + kSharpAcMinTemp;
+  if(_.Temp == 0) {
+    return 10;
+  } else {
+    return _.Temp + kSharpAcMinTemp + 2;
+  }
 }
 
 /// Get the operating mode setting of the A/C.
@@ -469,7 +474,6 @@ void IRSharpAc::setMode(const uint8_t mode, const bool save) {
   if (mode == kSharpAcHeat) {
     switch (getModel()) {
       case sharp_ac_remote_model_t::A705:
-      case sharp_ac_remote_model_t::A903:
         // These models have no heat mode, use Fan mode instead.
         realMode = kSharpAcFan;
         break;
@@ -480,11 +484,42 @@ void IRSharpAc::setMode(const uint8_t mode, const bool save) {
 
   switch (realMode) {
     case kSharpAcAuto:  // Also kSharpAcFan
+      switch(getSwingV()) {
+        case kSharpAcSwingVAuto:
+        case kSharpAcSwingVLow:
+        break;
+        default:
+        setSwingV(kSharpAcSwingVAuto);
+        break;
+      }
+      _.Mode = realMode;
+      break;
     case kSharpAcDry:
-      // When Dry or Auto, Fan always 2(Auto)
+      // When Dry, Fan always 2(Auto)
       setFan(kSharpAcFanAuto, false);
-      // FALLTHRU
+      switch(getSwingV()) {
+        case kSharpAcSwingVAuto:
+        case kSharpAcSwingVLow:
+        case kSharpAcSwingVHigh:
+        break;
+        default:
+        setSwingV(kSharpAcSwingVAuto);
+        break;
+      }
+      _.Mode = realMode;
+      break;
     case kSharpAcCool:
+      switch(getSwingV()) {
+        case kSharpAcSwingVAuto:
+        case kSharpAcSwingVLow:
+        case kSharpAcSwingVHigh:
+        break;
+        default:
+        setSwingV(kSharpAcSwingVAuto);
+        break;
+      }
+      _.Mode = realMode;
+      break;
     case kSharpAcHeat:
       _.Mode = realMode;
       break;
@@ -548,7 +583,11 @@ void IRSharpAc::setTurbo(const bool on) {
 
 /// Get the Vertical Swing setting of the A/C.
 /// @return The position of the Vertical Swing setting.
-uint8_t IRSharpAc::getSwingV(void) const { return _.Swing; }
+uint8_t IRSharpAc::getSwingV(void) const { return _.SwingV; }
+
+/// Get the Horizontal Swing setting of the A/C.
+/// @return The position of the Horizontal Swing setting.
+uint8_t IRSharpAc::getSwingH(void) const { return _.SwingH; }
 
 /// Set the Vertical Swing setting of the A/C.
 /// @note Some positions may not work on all models.
@@ -567,9 +606,11 @@ void IRSharpAc::setSwingV(const uint8_t position, const bool force) {
         return;
       }
       // FALLTHRU
+    case kSharpAcSwingVAuto:
     case kSharpAcSwingVHigh:
     case kSharpAcSwingVMid:
     case kSharpAcSwingVLow:
+    case kSharpAcSwingVLowest:
     case kSharpAcSwingVToggle:
     case kSharpAcSwingVOff:
     case kSharpAcSwingVLast:  // Technically valid, but we don't use it.
@@ -577,8 +618,39 @@ void IRSharpAc::setSwingV(const uint8_t position, const bool force) {
       _.Special = kSharpAcSpecialSwing;
       // FALLTHRU
     case kSharpAcSwingVIgnore:
-      _.Swing = position;
+      _.SwingV = position;
   }
+}
+
+/// Set the Horizontal Swing setting of the A/C.
+/// @note Some positions may not work on all models.
+/// @param[in] position The desired position/setting.
+void IRSharpAc::setSwingH(const uint8_t position) {
+    _.SwingH = position;
+}
+
+/// Convert a standard A/C horizontal swing into its native setting.
+/// @param[in] position A stdAc::swingh_t position to convert.
+/// @return The equivalent native horizontal swing position.
+uint8_t IRSharpAc::convertSwingH(const stdAc::swingh_t position) {
+    switch (position) {
+        case stdAc::swingh_t::kLeft:
+        case stdAc::swingh_t::kLeftMax:
+            return kSharpAcSwingHLeft;
+        case stdAc::swingh_t::kMiddle:
+            return kSharpAcSwingHMid;
+        case stdAc::swingh_t::kRight:
+        case stdAc::swingh_t::kRightMax:
+            return kSharpAcSwingHRight;
+        case stdAc::swingh_t::kWide:
+            return kSharpAcSwingHBoth;
+        case stdAc::swingh_t::kAuto:
+            return kSharpAcSwingHAuto;
+        case stdAc::swingh_t::kOff:
+            return kSharpAcSwingHIgnore;
+        default:
+            return kSharpAcSwingHIgnore;
+    }
 }
 
 /// Convert a standard A/C vertical swing into its native setting.
@@ -591,7 +663,7 @@ uint8_t IRSharpAc::convertSwingV(const stdAc::swingv_t position) {
     case stdAc::swingv_t::kMiddle:  return kSharpAcSwingVMid;
     case stdAc::swingv_t::kLow:     return kSharpAcSwingVLow;
     case stdAc::swingv_t::kLowest:  return kSharpAcSwingVCoanda;
-    case stdAc::swingv_t::kAuto:    return kSharpAcSwingVToggle;
+    case stdAc::swingv_t::kAuto:    return kSharpAcSwingVAuto;
     case stdAc::swingv_t::kOff:     return kSharpAcSwingVOff;
     default:                        return kSharpAcSwingVIgnore;
   }
@@ -819,18 +891,39 @@ stdAc::fanspeed_t IRSharpAc::toCommonFanSpeed(const uint8_t speed) const {
 stdAc::swingv_t IRSharpAc::toCommonSwingV(const uint8_t pos,
                                           const stdAc::opmode_t mode) const {
   switch (pos) {
-    case kSharpAcSwingVHigh:   return stdAc::swingv_t::kHighest;
+    case kSharpAcSwingVHigh:   return stdAc::swingv_t::kHigh;
     case kSharpAcSwingVMid:    return stdAc::swingv_t::kMiddle;
     case kSharpAcSwingVLow:    return stdAc::swingv_t::kLow;
+    case kSharpAcSwingVLowest:    return stdAc::swingv_t::kLowest;
     case kSharpAcSwingVCoanda:  // Coanda has mode dependent positionss
       switch (mode) {
         case stdAc::opmode_t::kCool: return stdAc::swingv_t::kHighest;
         case stdAc::opmode_t::kHeat: return stdAc::swingv_t::kLowest;
         default:                     return stdAc::swingv_t::kOff;
       }
-    case kSharpAcSwingVToggle: return stdAc::swingv_t::kAuto;
+    case kSharpAcSwingVAuto: return stdAc::swingv_t::kAuto;
     default:                   return stdAc::swingv_t::kOff;
   }
+}
+
+/// Convert a native horizontal swing postion to it's common equivalent.
+/// @param[in] pos A native position to convert.
+/// @return The common horizontal swing position.
+stdAc::swingh_t IRSharpAc::toCommonSwingH(const uint8_t pos) const {
+    switch (pos) {
+        case kSharpAcSwingHMid:
+            return stdAc::swingh_t::kMiddle;
+        case kSharpAcSwingHLeft:
+            return stdAc::swingh_t::kLeft;
+        case kSharpAcSwingHRight:
+            return stdAc::swingh_t::kRight;
+        case kSharpAcSwingHBoth:
+            return stdAc::swingh_t::kWide;
+        case kSharpAcSwingHAuto:
+            return stdAc::swingh_t::kAuto;
+        default:
+            return stdAc::swingh_t::kOff;
+    }
 }
 
 /// Convert the current internal state into its stdAc::state_t equivalent.
@@ -854,8 +947,8 @@ stdAc::state_t IRSharpAc::toCommon(const stdAc::state_t *prev) const {
   result.econo = getEconoToggle();
   result.light = getLightToggle();
   result.clean = _.Clean;
+  result.swingh = toCommonSwingH(getSwingH());
   // Not supported.
-  result.swingh = stdAc::swingh_t::kOff;
   result.quiet = false;
   result.beep = false;
   result.sleep = -1;
@@ -901,21 +994,28 @@ String IRSharpAc::toString(void) const {
     result += ')';
   } else {
     result += addSwingVToString(
-        getSwingV(), 0xFF,
+        getSwingV(), kSharpAcSwingVAuto,
         // Coanda means Highest when in Cool mode.
-        (mode == kSharpAcCool) ? kSharpAcSwingVCoanda : kSharpAcSwingVToggle,
+        0xFF,
         kSharpAcSwingVHigh,
         0xFF,  // Upper Middle is unused
         kSharpAcSwingVMid,
         0xFF,  // Lower Middle is unused
         kSharpAcSwingVLow,
-        kSharpAcSwingVCoanda,
+        kSharpAcSwingVLowest,
         kSharpAcSwingVOff,
         // Below are unused.
-        kSharpAcSwingVToggle,
+        0xFF,
         0xFF,
         0xFF);
   }
+    result += addSwingHToString(
+        getSwingH(), kSharpAcSwingHAuto,
+        kSharpAcSwingHLeft, kSharpAcSwingHLeft,
+        kSharpAcSwingHMid,
+        kSharpAcSwingHRight, kSharpAcSwingHRight,
+        kSharpAcSwingHIgnore,
+        0xFF, 0xFF, 0xFF, kSharpAcSwingHBoth);
   result += addBoolToString(getTurbo(), kTurboStr);
   result += addBoolToString(_.Ion, kIonStr);
   switch (model) {
@@ -971,6 +1071,10 @@ bool IRrecv::decodeSharpAc(decode_results *results, uint16_t offset,
   // No need to record the state as we stored it as we decoded it.
   // As we use result->state, we don't record value, address, or command as it
   // is a union data type.
+    for(int i = 8; i < 9; i++) {
+  printf("After State[%d]: 0x%X\n", i, results->state[i]);
+  }
+
   return true;
 }
 #endif  // DECODE_SHARP_AC
